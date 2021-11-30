@@ -30,7 +30,7 @@ int randGen(int low, int high) {
 void run(Competitor& c) {
     //Upper part doesn't need to be mutex locked, as each thread has its own threadmap.
 
-    //Assuming the example wants me to create a new threadmap for each run, I'm going to do that. Waiting for email if it is/isnt
+    //Assuming the example wants me to create a new threadmap for each run, I'm going to do that. Waiting for email if it is/isnt correct
     ThreadMap temp;
     temp.insertThreadPair(c);
         
