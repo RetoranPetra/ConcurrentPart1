@@ -1,3 +1,5 @@
-﻿  main.cpp
+﻿  ThreadMap.cpp
+  main.cpp
 C:\Users\flyro\source\repos\ConcurrentPart1\ConcurrentPart1\main.cpp(21,22): warning C4244: 'argument': conversion from 'time_t' to 'unsigned int', possible loss of data
+  Generating Code...
   ConcurrentPart1.vcxproj -> C:\Users\flyro\source\repos\ConcurrentPart1\Debug\ConcurrentPart1.exe

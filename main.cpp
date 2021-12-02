@@ -27,18 +27,16 @@ int randGen(int low, int high) {
 }
 
 //Passes competitor by reference
-void run(Competitor& c) {
-    //Upper part doesn't need to be mutex locked, as each thread has its own threadmap.
+void run(Competitor& c,ThreadMap& mapIn) {
+    //Doesn't need mutex as mutex has been implemented in class
+    mapIn.insertThreadPair(c);
 
-    //Assuming the example wants me to create a new threadmap for each run, I'm going to do that. Waiting for email if it is/isnt correct
-    ThreadMap temp;
-    temp.insertThreadPair(c);
-        
+
     //Random delay, using own funcs as rand isn't thread safe. Generates times between 10-15 seconds, as an estimate of athletes.
-    std::this_thread::sleep_for(std::chrono::seconds(randGen(10,15)));
+    std::this_thread::sleep_for(std::chrono::milliseconds(randGen(10000,15000)));
     //prints out values, to be legible needs to be mutex'd so prints display in order
     std::lock_guard<std::mutex> guard(printLock);
-    temp.printMapContents();
+    c.printCompetitor();
 }
 
 int main() {
@@ -47,6 +45,9 @@ int main() {
     //Initialisation of arrays
     std::thread theThreads[NO_TEAMS][NO_MEMBERS];
     Competitor teamsAndMembers[NO_TEAMS][NO_MEMBERS];
+
+    //Initialise threadmap
+    ThreadMap mp;
 
     std::cout << "Race Start!\n";
 
@@ -66,7 +67,8 @@ int main() {
     for (int i = 0; i < NO_TEAMS; i++) {
         for (int j = 0; j < NO_MEMBERS; j++) {
             theThreads[i][j] = std::thread(run,   //Constructs thread to execute the function "run"
-                std::ref(teamsAndMembers[i][j])); //need to use std::ref wrapper to pass by reference to threads.
+                std::ref(teamsAndMembers[i][j]),
+                std::ref(mp)); //need to use std::ref wrapper to pass by reference to threads.
         }
     }
 
