@@ -5,15 +5,46 @@
 #include <iostream>
 #include <string>
 #include <mutex>
-//Needed for random generation
-#include <ctime>
-#include <random>
+#include <thread>
 //Internal headers
 #include "Competitor.h"
 #include "ThreadMap.h"
+//Needed for random generation
+#include <ctime>
+#include <random>
 
 
 
+
+//Mutex used to enforce sequential printing
+std::mutex printLock;
+
+//Initialisation of constants
+const int NO_TEAMS = 4;         //Number of teams in race
+const int NO_MEMBERS = 4;       //Number of members per team
+const int NO_TEAM_EXCHANGES = 3;//Number of exchange points per team
+
+//Initialise threadmap
+ThreadMap mp;
+
+//Initialisation of arrays
+std::thread theThreads[NO_TEAMS][NO_MEMBERS];
+Competitor teamsAndMembers[NO_TEAMS][NO_MEMBERS];
+
+
+//As both classes need to access EZAgent's condition vars, mutexes and bools, they will be declared here. There might be a better way to do this, but so far I have found no other way.
+std::mutex muS[NO_TEAMS][NO_TEAM_EXCHANGES];
+std::condition_variable cvS[NO_TEAMS][NO_TEAM_EXCHANGES];
+bool batonFlags[NO_TEAMS][NO_TEAM_EXCHANGES] = {};
+
+//Simple function to grab teamnumber from current thread
+int getTeamNumber() {
+    return std::stoi(mp.getThreadId().getTeam().substr(4, 1));
+}
+//Simple function to grab member number from current thread
+int getMemberNumber() {
+    return std::stoi(mp.getThreadId().getPerson().substr(5, 1));
+}
 
 std::mt19937 gen(time(0)); //Standard Mersenne_twister_engine seeded with time(0)
 int randGen(int low, int high) {
@@ -31,40 +62,6 @@ void runnerDelay(void) {
 void startUpDelay(void) {
     //Emulates reaction speed to gunshot + time to get moving
     std::this_thread::sleep_for(std::chrono::milliseconds(randGen(100, 300)));
-}
-
-
-
-
-
-
-
-
-//Initialisation of constants
-const int NO_TEAMS = 4;         //Number of teams in race
-const int NO_MEMBERS = 4;       //Number of members per team
-const int NO_TEAM_EXCHANGES = 3;//Number of exchange points per team
-
-//Initialise threadmap
-ThreadMap mp;
-
-//Initialisation of arrays
-std::thread theThreads[NO_TEAMS][NO_MEMBERS];
-Competitor teamsAndMembers[NO_TEAMS][NO_MEMBERS];
-
-
-//As both classes need to access EZAgent's condition vars, mutexes and bools, they will be declared here. There might be a better way to do this, but so far I have found no other way.
-std::mutex mu[NO_TEAMS][NO_TEAM_EXCHANGES];
-std::condition_variable cv[NO_TEAMS][NO_TEAM_EXCHANGES];
-bool batonFlags[NO_TEAMS][NO_TEAM_EXCHANGES] = {};
-
-//Simple function to grab teamnumber from current thread
-int getTeamNumber() {
-    return stoi(mp.getThreadId().getTeam().substr(4, 1));
-}
-//Simple function to grab member number from current thread
-int getMemberNumber() {
-    return stoi(mp.getThreadId().getPerson().substr(5, 1));
 }
 
 //Agents setup, not put in seperate CPP/H files due to needing global variables
@@ -99,6 +96,12 @@ public:
             }
         }
         runnerDelay();
+        //Releases thread next in line to run
+        int teamNum = getTeamNumber();
+        std::unique_lock<std::mutex> lock(muS[teamNum][0]);
+        cvS[teamNum][0].notify_all();
+        batonFlags[teamNum][0] = true;
+
         //Don't need to reset starting gun on release, as intended to release all threads only once.
     }
     void proceed() {
@@ -107,7 +110,7 @@ public:
         cv.notify_all();
         startingGun = true;
         //Don't need to "reset" starting gun, as it only needs to be "fired" once for race to start.
-        
+
     }
 
 private:
@@ -118,39 +121,46 @@ private:
     bool startingGun = false;
     std::mutex mu;
     std::condition_variable cv;
-    
+
     //Mutex to avoid two simultaneous writes to counter
     std::mutex counterMu;
 }; //end class StartAgent 
 
-/*
+
 class EZAgent : public SyncAgent {  //concrete class that CAN be instantiated 
 public:
     EZAgent() {}
     void pause() {
-        // insert code to implement pausing of next runner thread
-        std::unique_lock<std::mutex> lock(mu);
-        while (!*goFlag) {
-            cv.wait(lock);
+        teamNum = getTeamNumber();
+        memberNum = getMemberNumber() - 1;//Needs to be -1 for correct index
+        //Locks down current thread, needs unlocking from another.
+        {
+            std::unique_lock<std::mutex> lock(muS[teamNum][memberNum]);
+            while (!batonFlags[teamNum][memberNum]) {
+                cvS[teamNum][memberNum].wait(lock);
+            }
         }
+        runnerDelay();
+        proceed();//Allows next runner to continue
     }
     void proceed() {
+        teamNum = getTeamNumber();
+        memberNum = getMemberNumber();//Needs to be -1 for correct index
+        if (memberNum == NO_MEMBERS - 1) { return; }
         // insert code to implement releasing of next runner thread
-        std::unique_lock<std::mutex> lock(mu);
-        cv.notify_all();
-        *goFlag = true;
+        std::unique_lock<std::mutex> lock(muS[teamNum][memberNum]);
+        cvS[teamNum][memberNum].notify_all();
+        batonFlags[teamNum][memberNum] = true;
         //Don't need to "reset" starting gun, as it only needs to be "fired" once for race to start.
     }
 private:
     // insert any necessary data members including variables, mutexes, locks, cond vars
+    int teamNum;
+    int memberNum;
 }; //end class EZAgent
 
+
 EZAgent exchanges[NO_TEAMS][NO_TEAM_EXCHANGES];
-*/
-//Mutex used to enforce sequential printing
-std::mutex printLock;
-
-
 
 //Passes competitor by reference
 void run(Competitor& c,ThreadMap& mapIn,SyncAgent& agent) {
@@ -181,36 +191,30 @@ int main() {
                 "Robot"+std::to_string(j));
         }
     }
-    /*
-    //Creation of threads
+    //Creates start agent, shared between first 4 runners of each time
+    StartAgent smokingGun;
     for (int i = 0; i < NO_TEAMS; i++) {
-        for (int j = 0; j < NO_MEMBERS; j++) {
-            theThreads[i][j] = std::thread(run,   //Constructs thread to execute the function "run"
+        //Assigns smokingGun to 4 new threads, along with the appropriate Competitor's
+        theThreads[i][0] = std::thread(run,
+            std::ref(teamsAndMembers[i][0]),
+            std::ref(mp),
+            std::ref(smokingGun)
+        );
+        //Assigns the other 12 threads exchanges 
+        for (int j = 1; j < NO_MEMBERS; j++) {
+            theThreads[i][j] = std::thread(run,
                 std::ref(teamsAndMembers[i][j]),
-                std::ref(mp)); //need to use std::ref wrapper to pass by reference to threads.
+                std::ref(mp),
+                std::ref(exchanges[i][j-1])
+            );
         }
     }
-    
-
     //Joining the threads
     for (int i = 0; i < NO_TEAMS; i++) {
         for (int j = 0; j < NO_MEMBERS; j++) {
             theThreads[i][j].join();              //Joins all threads
         }
     }
-    */
-    StartAgent smokingGun;
-    for (int i = 0; i < NO_TEAMS; i++) {
-        theThreads[i][0] = std::thread(run,
-            std::ref(teamsAndMembers[i][0]),
-            std::ref(mp),
-            std::ref(smokingGun)
-        );
-    }
-    for (int i = 0; i < NO_TEAMS; i++) {
-        theThreads[i][0].join();
-    }
-
     //Simple message to confirm execution
     std::cout << "All competitors finished!\n";
 }
