@@ -6,6 +6,7 @@ class Competitor { // created in main and never updated, passed to a thread, pla
 private:
     std::string teamName;
     std::string personName;
+    int raceTime = 0;
 public:
     Competitor();
     Competitor(std::string tN, std::string pN);
@@ -15,5 +16,8 @@ public:
     std::string getPerson();
     static Competitor makeNull();
     void printCompetitor();
+    void setRaceTime(int rt);
+    int getRaceTime();
+    
 };
 

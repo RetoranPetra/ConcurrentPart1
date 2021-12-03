@@ -18,3 +18,9 @@ Competitor Competitor::makeNull() {
 void Competitor::printCompetitor() {
     std::cout << "Team = " << teamName << " Person = " << personName << "\n";
 }
+void Competitor::setRaceTime(int rt){
+    raceTime = rt;
+}
+int Competitor::getRaceTime(){
+    return raceTime;
+}

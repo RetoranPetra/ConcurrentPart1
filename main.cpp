@@ -54,9 +54,9 @@ int randGen(int low, int high) {
 }
 
 
-void runnerDelay(void) {
+int runnerDelay(void) {
     //Random delay, using own funcs as rand isn't thread safe. Generates times between 10-15 seconds, as an estimate of athletes.
-    std::this_thread::sleep_for(std::chrono::milliseconds(randGen(10000, 15000)));
+    return randGen(1000, 1500);
 }
 
 void startUpDelay(void) {
@@ -95,7 +95,8 @@ public:
                 cv.wait(lock);
             }
         }
-        runnerDelay();
+        //Delays by given amount in competitor
+        std::this_thread::sleep_for(std::chrono::milliseconds(mp.getThreadId().getRaceTime()));
         //Releases thread next in line to run
         int teamNum = getTeamNumber();
         std::unique_lock<std::mutex> lock(muS[teamNum][0]);
@@ -140,7 +141,8 @@ public:
                 cvS[teamNum][memberNum].wait(lock);
             }
         }
-        runnerDelay();
+        //Delays thread by runnerdelay, and makes note of the time to run to store in competitor
+        std::this_thread::sleep_for(std::chrono::milliseconds(mp.getThreadId().getRaceTime()));
         proceed();//Allows next runner to continue
     }
     void proceed() {
@@ -189,6 +191,7 @@ int main() {
             teamsAndMembers[i][j] = Competitor(         //Setting values of undefined competitors as competitors defined by the structure.
                 "Team" + std::to_string(i),         //i used to create team names for each competitor.
                 "Robot"+std::to_string(j));
+            teamsAndMembers[i][j].setRaceTime(runnerDelay());   //random time for race calculated before race, prevents desync between thread/main by just hardcoding values to threads.
         }
     }
     //Creates start agent, shared between first 4 runners of each time
@@ -217,4 +220,25 @@ int main() {
     }
     //Simple message to confirm execution
     std::cout << "All competitors finished!\n";
+    int times[NO_TEAMS] = {};
+    int positions[NO_TEAMS] = {};
+    for (int i = 0; i < NO_TEAMS; i++) {
+        for (int j = 0; j < NO_MEMBERS; j++) {
+            times[i] += teamsAndMembers[i][j].getRaceTime();
+            //Debug Code
+            //std::cout << "Team: " << i << " Member: " << j << " Time: " << teamsAndMembers[i][j].getRaceTime() << "\n";
+        }
+    }
+    std::copy(times, times+NO_TEAMS, positions);//Copys times array to positions
+    std::sort(positions, positions+NO_TEAMS);   //Sorts positions with smallest first
+    for (int i = 0; i < NO_TEAMS; i++) {
+        int team = -1;
+        for (int j = 0; j < NO_TEAMS; j++) {
+            if (times[j] == positions[i]) {
+                team = j;
+                break;  
+            }
+        }
+        std::cout << "Team" <<team<< " with a time of " << positions[i] << "\n";
+    }
 }
