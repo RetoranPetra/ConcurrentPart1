@@ -43,4 +43,7 @@ void ThreadMap::printMapContents() {
 	std::cout << "END MAP CONTENTS" << "\n";
 }
 
-int ThreadMap::ThreadMapSize() { return threadComp.size(); }
+int ThreadMap::ThreadMapSize() { 
+	std::lock_guard<std::mutex> guard(mapWriteLock);
+	return threadComp.size();
+}

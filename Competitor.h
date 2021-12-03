@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <iostream>
 //Removed namespace STD as can cause problems in knowing which namespace you're in when included in header files
 
 class Competitor { // created in main and never updated, passed to a thread, placed in map

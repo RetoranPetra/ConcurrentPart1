@@ -1,5 +1,4 @@
 #include "Competitor.h"
-#include <iostream>
 
 Competitor::Competitor() {}
 

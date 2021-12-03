@@ -95,14 +95,13 @@ public:
                 cv.wait(lock);
             }
         }
-        //Delays by given amount in competitor
+        //Sleeps for time specified by competitor
         std::this_thread::sleep_for(std::chrono::milliseconds(mp.getThreadId().getRaceTime()));
-        //Releases thread next in line to run
+
         int teamNum = getTeamNumber();
         std::unique_lock<std::mutex> lock(muS[teamNum][0]);
         cvS[teamNum][0].notify_all();
         batonFlags[teamNum][0] = true;
-
         //Don't need to reset starting gun on release, as intended to release all threads only once.
     }
     void proceed() {
@@ -141,8 +140,9 @@ public:
                 cvS[teamNum][memberNum].wait(lock);
             }
         }
-        //Delays thread by runnerdelay, and makes note of the time to run to store in competitor
+        //Sleeps for time specified by competitor
         std::this_thread::sleep_for(std::chrono::milliseconds(mp.getThreadId().getRaceTime()));
+
         proceed();//Allows next runner to continue
     }
     void proceed() {
@@ -167,9 +167,14 @@ EZAgent exchanges[NO_TEAMS][NO_TEAM_EXCHANGES];
 //Passes competitor by reference
 void run(Competitor& c,ThreadMap& mapIn,SyncAgent& agent) {
     //Doesn't need mutex as mutex has been implemented in class
+    //As threadmap takes in copies of competitors, not by reference we need to calculate the delay here to be passed to the competitor C, or else it won't be updated.
+    int delay = runnerDelay();
+    c.setRaceTime(delay);
+    //Inserts C into map
     mapIn.insertThreadPair(c);
     //Waits for signal/batton
     agent.pause();
+    
     //prints out values, to be legible needs to be mutex'd so prints display in order
     std::lock_guard<std::mutex> guard(printLock);
     c.printCompetitor();
@@ -191,7 +196,6 @@ int main() {
             teamsAndMembers[i][j] = Competitor(         //Setting values of undefined competitors as competitors defined by the structure.
                 "Team" + std::to_string(i),         //i used to create team names for each competitor.
                 "Robot"+std::to_string(j));
-            teamsAndMembers[i][j].setRaceTime(runnerDelay());   //random time for race calculated before race, prevents desync between thread/main by just hardcoding values to threads.
         }
     }
     //Creates start agent, shared between first 4 runners of each time
