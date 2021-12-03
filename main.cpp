@@ -52,7 +52,20 @@ ThreadMap mp;
 std::thread theThreads[NO_TEAMS][NO_MEMBERS];
 Competitor teamsAndMembers[NO_TEAMS][NO_MEMBERS];
 
-bool goFlags[NO_TEAMS][NO_MEMBERS+1] = {};
+
+//As both classes need to access EZAgent's condition vars, mutexes and bools, they will be declared here. There might be a better way to do this, but so far I have found no other way.
+std::mutex mu[NO_TEAMS][NO_TEAM_EXCHANGES];
+std::condition_variable cv[NO_TEAMS][NO_TEAM_EXCHANGES];
+bool batonFlags[NO_TEAMS][NO_TEAM_EXCHANGES] = {};
+
+//Simple function to grab teamnumber from current thread
+int getTeamNumber() {
+    return stoi(mp.getThreadId().getTeam().substr(4, 1));
+}
+//Simple function to grab member number from current thread
+int getMemberNumber() {
+    return stoi(mp.getThreadId().getPerson().substr(5, 1));
+}
 
 //Agents setup, not put in seperate CPP/H files due to needing global variables
 class SyncAgent {  //abstract base class 
@@ -94,6 +107,7 @@ public:
         cv.notify_all();
         startingGun = true;
         //Don't need to "reset" starting gun, as it only needs to be "fired" once for race to start.
+        
     }
 
 private:
@@ -112,18 +126,13 @@ private:
 /*
 class EZAgent : public SyncAgent {  //concrete class that CAN be instantiated 
 public:
-    EZAgent(int teamNo,int compNum,EZAgent* ezArray) {
-        //Pointer for boolean flag
-        goFlag = &goFlags[teamNo][compNum];
-        nextGoFlag = &goFlags[teamNo][compNum+1];
-    } //constructor 
+    EZAgent() {}
     void pause() {
         // insert code to implement pausing of next runner thread
         std::unique_lock<std::mutex> lock(mu);
         while (!*goFlag) {
             cv.wait(lock);
         }
-        *nextGoFlag = false;
     }
     void proceed() {
         // insert code to implement releasing of next runner thread
@@ -134,22 +143,10 @@ public:
     }
 private:
     // insert any necessary data members including variables, mutexes, locks, cond vars
-    //Condition variable variables
-    bool* goFlag = nullptr;
-    bool* nextGoFlag = nullptr;
-    std::mutex mu;
-    std::condition_variable cv;
-
 }; //end class EZAgent
-
 
 EZAgent exchanges[NO_TEAMS][NO_TEAM_EXCHANGES];
 */
-
-
-
-
-
 //Mutex used to enforce sequential printing
 std::mutex printLock;
 
@@ -168,18 +165,20 @@ void run(Competitor& c,ThreadMap& mapIn,SyncAgent& agent) {
 
 int main() {
     //My Code
+
+    std::cout << "Enter to start race.";
     std::cin.get();//Waits for enter to start race
     std::cout << "Race Start!\n";
 
     //Defining teams and members
     //Defines team names as 1 to NO_TEAMS, defines 
 
-    int totalCount = 0;
+    //originally had unique names, but due to limitation of competitor class only returning strings and not numerical values, unique names no longer used
     for (int i = 0; i < NO_TEAMS; i++) {
-        for (int j = 0; j < NO_MEMBERS; j++,totalCount++) {
+        for (int j = 0; j < NO_MEMBERS; j++) {
             teamsAndMembers[i][j] = Competitor(         //Setting values of undefined competitors as competitors defined by the structure.
-                "Team" + std::to_string(i + 1),         //i used to create team names for each competitor.
-                "Robot"+std::to_string(totalCount+1));  //totalcount used to give unique names to the runners
+                "Team" + std::to_string(i),         //i used to create team names for each competitor.
+                "Robot"+std::to_string(j));
         }
     }
     /*
