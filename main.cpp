@@ -12,6 +12,34 @@
 #include "Competitor.h"
 #include "ThreadMap.h"
 
+
+
+
+std::mt19937 gen(time(0)); //Standard Mersenne_twister_engine seeded with time(0)
+int randGen(int low, int high) {
+    std::uniform_int_distribution<> dis(low, high); //generate a random integer between 1-10.
+    int n = dis(gen);
+    return n;
+}
+
+
+void runnerDelay(void) {
+    //Random delay, using own funcs as rand isn't thread safe. Generates times between 10-15 seconds, as an estimate of athletes.
+    std::this_thread::sleep_for(std::chrono::milliseconds(randGen(10000, 15000)));
+}
+
+void startUpDelay(void) {
+    //Emulates reaction speed to gunshot + time to get moving
+    std::this_thread::sleep_for(std::chrono::milliseconds(randGen(100, 300)));
+}
+
+
+
+
+
+
+
+
 //Initialisation of constants
 const int NO_TEAMS = 4;         //Number of teams in race
 const int NO_MEMBERS = 4;       //Number of members per team
@@ -24,7 +52,7 @@ ThreadMap mp;
 std::thread theThreads[NO_TEAMS][NO_MEMBERS];
 Competitor teamsAndMembers[NO_TEAMS][NO_MEMBERS];
 
-
+bool goFlags[NO_TEAMS][NO_MEMBERS+1] = {};
 
 //Agents setup, not put in seperate CPP/H files due to needing global variables
 class SyncAgent {  //abstract base class 
@@ -44,15 +72,20 @@ public:
             readyCounter++;
             //Checks if all teams are ready to start the race, if so releases all other threads and exits the function.
             if (readyCounter == NO_TEAMS) {
+                //waits before starting, simulates ready time of real athlete
+                startUpDelay();
                 proceed();
-                return;
             }
         }
         //Implements condition variable check, will only break when proceed() is called. Otherwise caller of pause will be stuck in loop.
-        std::unique_lock<std::mutex> lock(mu);
-        while (!startingGun) {
-            cv.wait(lock);
+        //Scope needed to prevent inteference with runnerdelay afterwards due to mutexlock.
+        {
+            std::unique_lock<std::mutex> lock(mu);
+            while (!startingGun) {
+                cv.wait(lock);
+            }
         }
+        runnerDelay();
         //Don't need to reset starting gun on release, as intended to release all threads only once.
     }
     void proceed() {
@@ -76,54 +109,51 @@ private:
     std::mutex counterMu;
 }; //end class StartAgent 
 
+/*
 class EZAgent : public SyncAgent {  //concrete class that CAN be instantiated 
 public:
-    EZAgent() {} //constructor 
+    EZAgent(int teamNo,int compNum,EZAgent* ezArray) {
+        //Pointer for boolean flag
+        goFlag = &goFlags[teamNo][compNum];
+        nextGoFlag = &goFlags[teamNo][compNum+1];
+    } //constructor 
     void pause() {
-        // insert code to implement pausing of next runner thread  
+        // insert code to implement pausing of next runner thread
+        std::unique_lock<std::mutex> lock(mu);
+        while (!*goFlag) {
+            cv.wait(lock);
+        }
+        *nextGoFlag = false;
     }
     void proceed() {
-        // insert code to implement releasing of next runner thread 
+        // insert code to implement releasing of next runner thread
+        std::unique_lock<std::mutex> lock(mu);
+        cv.notify_all();
+        *goFlag = true;
+        //Don't need to "reset" starting gun, as it only needs to be "fired" once for race to start.
     }
 private:
-    // insert any necessary data members including variables, mutexes, locks, cond vars 
+    // insert any necessary data members including variables, mutexes, locks, cond vars
+    //Condition variable variables
+    bool* goFlag = nullptr;
+    bool* nextGoFlag = nullptr;
+    std::mutex mu;
+    std::condition_variable cv;
+
 }; //end class EZAgent
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-//Setups up array of agents
 EZAgent exchanges[NO_TEAMS][NO_TEAM_EXCHANGES];
+*/
+
+
+
+
 
 //Mutex used to enforce sequential printing
 std::mutex printLock;
 
 
-std::mt19937 gen(time(0)); //Standard Mersenne_twister_engine seeded with time(0)
-int randGen(int low, int high) {
-    std::uniform_int_distribution<> dis(low, high); //generate a random integer between 1-10.
-    int n = dis(gen);
-    return n;
-}
 
 //Passes competitor by reference
 void run(Competitor& c,ThreadMap& mapIn,SyncAgent& agent) {
@@ -131,9 +161,6 @@ void run(Competitor& c,ThreadMap& mapIn,SyncAgent& agent) {
     mapIn.insertThreadPair(c);
     //Waits for signal/batton
     agent.pause();
-
-    //Random delay, using own funcs as rand isn't thread safe. Generates times between 10-15 seconds, as an estimate of athletes.
-    std::this_thread::sleep_for(std::chrono::milliseconds(randGen(10000,15000)));
     //prints out values, to be legible needs to be mutex'd so prints display in order
     std::lock_guard<std::mutex> guard(printLock);
     c.printCompetitor();
@@ -141,7 +168,7 @@ void run(Competitor& c,ThreadMap& mapIn,SyncAgent& agent) {
 
 int main() {
     //My Code
-
+    std::cin.get();//Waits for enter to start race
     std::cout << "Race Start!\n";
 
     //Defining teams and members
@@ -184,7 +211,6 @@ int main() {
     for (int i = 0; i < NO_TEAMS; i++) {
         theThreads[i][0].join();
     }
-
 
     //Simple message to confirm execution
     std::cout << "All competitors finished!\n";
